@@ -10,6 +10,20 @@ _NUCLEI_SEVERITY_MAP = {
     "critical": Severity.CRITICAL,
 }
 
+_SEVERITY_ORDER = {
+    Severity.INFO: 0,
+    Severity.LOW: 1,
+    Severity.MEDIUM: 2,
+    Severity.HIGH: 3,
+    Severity.CRITICAL: 4,
+}
+
+_CONFIDENCE_ORDER = {
+    Confidence.LOW: 0,
+    Confidence.MEDIUM: 1,
+    Confidence.HIGH: 2,
+}
+
 
 def analyze(observations: list[Observation]) -> list[Finding]:
     findings: list[Finding] = []
@@ -48,6 +62,7 @@ def analyze(observations: list[Observation]) -> list[Finding]:
                     description=f"{obs.target} не підтримує HTTPS-з'єднання.",
                 )
             )
+
         # Правило 3: небезпечні незашифровані протоколи
         if obs.type == "OPEN_PORT":
             insecure_services = {"ftp", "telnet", "http"}
@@ -67,7 +82,8 @@ def analyze(observations: list[Observation]) -> list[Finding]:
                         ),
                     )
                 )
-            # Правило 4: знахідки Nuclei
+
+        # Правило 4: знахідки Nuclei
         if obs.type == "NUCLEI_MATCH":
             nuclei_severity = obs.evidence.get("severity", "info").lower()
             severity = _NUCLEI_SEVERITY_MAP.get(nuclei_severity, Severity.INFO)
@@ -78,7 +94,7 @@ def analyze(observations: list[Observation]) -> list[Finding]:
                     title=name,
                     target=obs.target,
                     severity=severity,
-                    confidence=Confidence.MEDIUM,  # автоматичний скан, не перевірено людиною
+                    confidence=Confidence.MEDIUM,
                     status=Status.OBSERVED,
                     source_observations=[obs.to_dict()],
                     description=(
@@ -87,8 +103,8 @@ def analyze(observations: list[Observation]) -> list[Finding]:
                     ),
                 )
             )
-    
-            # Правило 5: відкритий .git
+
+        # Правило 5: відкритий .git
         if obs.type == "GIT_EXPOSED":
             findings.append(
                 Finding(
@@ -122,5 +138,82 @@ def analyze(observations: list[Observation]) -> list[Finding]:
                     ),
                 )
             )
-   
-    return findings            
+
+        # Правило 7: публічно доступна API-документація/ендпоінт
+        if obs.type == "API_ENDPOINT":
+            looks_like_doc = obs.evidence.get("looks_like_doc", False)
+            findings.append(
+                Finding(
+                    title=(
+                        "Exposed API documentation"
+                        if looks_like_doc
+                        else "Accessible API endpoint"
+                    ),
+                    target=obs.target,
+                    severity=Severity.LOW if looks_like_doc else Severity.INFO,
+                    confidence=Confidence.HIGH if looks_like_doc else Confidence.MEDIUM,
+                    status=Status.OBSERVED,
+                    source_observations=[obs.to_dict()],
+                    description=(
+                        f"{obs.value} публічно доступний (статус {obs.evidence.get('status')}). "
+                        f"Розширює відому поверхню атаки — варто перевірити на відсутність "
+                        f"авторизації для чутливих ендпоінтів."
+                    ),
+                )
+            )
+        
+         # Правило 8: публічно доступний файл-маніфест залежностей
+        if obs.type == "DEPENDENCY_MANIFEST_EXPOSED":
+            findings.append(
+                Finding(
+                    title="Exposed dependency manifest file",
+                    target=obs.target,
+                    severity=Severity.LOW,
+                    confidence=Confidence.HIGH,
+                    status=Status.OBSERVED,
+                    source_observations=[obs.to_dict()],
+                    description=(
+                        f"{obs.value} публічно доступний і розкриває точні версії "
+                        f"використаних бібліотек — варто вручну перевірити версії "
+                        f"на наявність відомих CVE (наприклад через osv.dev)."
+                    ),
+                )
+            )
+
+    return _dedupe(findings)
+
+
+def _dedupe(findings: list[Finding]) -> list[Finding]:
+    grouped: dict[tuple[str, str], list[Finding]] = {}
+    for f in findings:
+        key = (f.title, f.target)
+        grouped.setdefault(key, []).append(f)
+
+    deduped: list[Finding] = []
+    for (title, target), group in grouped.items():
+        if len(group) == 1:
+            deduped.append(group[0])
+            continue
+
+        all_observations = []
+        for f in group:
+            all_observations.extend(f.source_observations)
+
+        best_severity = max(group, key=lambda f: _SEVERITY_ORDER[f.severity]).severity
+        best_confidence = max(group, key=lambda f: _CONFIDENCE_ORDER[f.confidence]).confidence
+
+        merged = Finding(
+            title=title,
+            target=target,
+            severity=best_severity,
+            confidence=best_confidence,
+            status=group[0].status,
+            source_observations=all_observations,
+            description=(
+                f"{group[0].description} "
+                f"(знайдено {len(group)} разів на різних джерелах — деталі в source_observations)"
+            ),
+        )
+        deduped.append(merged)
+
+    return deduped

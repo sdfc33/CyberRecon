@@ -1,9 +1,11 @@
 import httpx
 from cyberrecon.observation import Observation
+from cyberrecon.asset import AssetRegistry, AssetType
 
 
-def check_git_exposure(target: str) -> list[Observation]:
+def check_git_exposure(target: str, registry: AssetRegistry) -> list[Observation]:
     observations: list[Observation] = []
+    domain_asset = registry.get_or_create(AssetType.DOMAIN, target)
     url = f"https://{target}/.git/HEAD"
 
     try:
@@ -20,8 +22,10 @@ def check_git_exposure(target: str) -> list[Observation]:
         )
         return observations
 
-    # Справжній .git/HEAD завжди починається з "ref: refs/"
     if resp.status_code == 200 and resp.text.strip().startswith("ref:"):
+        url_asset = registry.get_or_create(AssetType.URL, url)
+        registry.link(domain_asset, url_asset, "serves", source="git_check")
+
         observations.append(
             Observation(
                 target=target,

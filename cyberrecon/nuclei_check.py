@@ -2,16 +2,15 @@ import subprocess
 import json
 from pathlib import Path
 from cyberrecon.observation import Observation
+from cyberrecon.asset import AssetRegistry, AssetType
 
 NUCLEI_PATH = Path("tools") / "nuclei.exe"
-
-# Обмежуємось легкими/швидкими категоріями для першої версії —
-# повний набір шаблонів nuclei вміє займати години на один хост
 DEFAULT_TAGS = "exposure,misconfig,tech"
 
 
-def scan_vulnerabilities(target: str, timeout: int = 180) -> list[Observation]:
+def scan_vulnerabilities(target: str, registry: AssetRegistry, timeout: int = 180) -> list[Observation]:
     observations: list[Observation] = []
+    domain_asset = registry.get_or_create(AssetType.DOMAIN, target)
 
     if not NUCLEI_PATH.exists():
         observations.append(
@@ -38,6 +37,8 @@ def scan_vulnerabilities(target: str, timeout: int = 180) -> list[Observation]:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
@@ -63,7 +64,6 @@ def scan_vulnerabilities(target: str, timeout: int = 180) -> list[Observation]:
         )
         return observations
 
-    # -jsonl виводить по одному JSON-об'єкту на рядок
     for line in result.stdout.splitlines():
         line = line.strip()
         if not line:
@@ -74,6 +74,11 @@ def scan_vulnerabilities(target: str, timeout: int = 180) -> list[Observation]:
             continue
 
         info = item.get("info", {})
+        matched_at = item.get("matched-at", url)
+
+        matched_asset = registry.get_or_create(AssetType.URL, matched_at)
+        registry.link(domain_asset, matched_asset, "serves", source="nuclei")
+
         observations.append(
             Observation(
                 target=target,
@@ -83,7 +88,7 @@ def scan_vulnerabilities(target: str, timeout: int = 180) -> list[Observation]:
                 evidence={
                     "name": info.get("name", ""),
                     "severity": info.get("severity", "unknown"),
-                    "matched_at": item.get("matched-at", ""),
+                    "matched_at": matched_at,
                     "description": info.get("description", ""),
                 },
             )

@@ -1,9 +1,11 @@
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from rich.console import Console
 
+from cyberrecon.asset import AssetRegistry
 from cyberrecon.dns_check import resolve_dns
 from cyberrecon.http_check import check_http
 from cyberrecon.subfinder_check import find_subdomains
@@ -13,6 +15,10 @@ from cyberrecon.git_check import check_git_exposure
 from cyberrecon.js_check import find_js_files
 from cyberrecon.secrets_check import scan_js_for_secrets
 from cyberrecon.findings_engine import analyze
+from cyberrecon.api_check import find_api_endpoints
+from cyberrecon.dependencies_check import find_exposed_manifests
+from cyberrecon.report import generate_report
+from cyberrecon.correlation_engine import correlate
 
 console = Console()
 
@@ -21,16 +27,17 @@ def run(target: str) -> None:
     console.print("[bold cyan]CyberRecon[/bold cyan]")
     console.print(f"Target: [bold]{target}[/bold]\n")
 
+    registry = AssetRegistry()
     observations = []
 
-    dns_obs = resolve_dns(target)
+    dns_obs = resolve_dns(target, registry)
     observations.extend(dns_obs)
     if any(o.type == "DNS_RECORD" for o in dns_obs):
         console.print("[green][+][/green] DNS resolved")
     else:
         console.print("[red][-][/red] DNS resolution failed")
 
-    http_obs = check_http(target)
+    http_obs = check_http(target, registry)
     observations.extend(http_obs)
     for o in http_obs:
         scheme = "HTTPS" if o.value.startswith("https") else "HTTP"
@@ -39,7 +46,7 @@ def run(target: str) -> None:
         else:
             console.print(f"[red][-][/red] {scheme} unreachable")
 
-    sub_obs = find_subdomains(target)
+    sub_obs = find_subdomains(target, registry)
     observations.extend(sub_obs)
     subdomain_count = sum(1 for o in sub_obs if o.type == "SUBDOMAIN")
     if subdomain_count:
@@ -50,7 +57,7 @@ def run(target: str) -> None:
         console.print("[dim][~][/dim] No subdomains found")
 
     console.print("[dim]Running nmap (this may take a while)...[/dim]")
-    port_obs = scan_ports(target)
+    port_obs = scan_ports(target, registry)
     observations.extend(port_obs)
     open_ports = sum(1 for o in port_obs if o.type == "OPEN_PORT")
     if open_ports:
@@ -61,7 +68,7 @@ def run(target: str) -> None:
         console.print("[dim][~][/dim] No open ports found")
 
     console.print("[dim]Running nuclei (this may take a while)...[/dim]")
-    nuclei_obs = scan_vulnerabilities(target)
+    nuclei_obs = scan_vulnerabilities(target, registry)
     observations.extend(nuclei_obs)
     match_count = sum(1 for o in nuclei_obs if o.type == "NUCLEI_MATCH")
     if match_count:
@@ -71,14 +78,14 @@ def run(target: str) -> None:
     else:
         console.print("[dim][~][/dim] No nuclei matches")
 
-    git_obs = check_git_exposure(target)
+    git_obs = check_git_exposure(target, registry)
     observations.extend(git_obs)
     if any(o.type == "GIT_EXPOSED" for o in git_obs):
         console.print("[red][!][/red] Exposed .git directory found!")
     else:
         console.print("[dim][~][/dim] No exposed .git")
 
-    js_obs = find_js_files(target)
+    js_obs = find_js_files(target, registry)
     observations.extend(js_obs)
     js_count = sum(1 for o in js_obs if o.type == "JS_FILE")
     if js_count:
@@ -86,12 +93,28 @@ def run(target: str) -> None:
     else:
         console.print("[dim][~][/dim] No JS files found")
 
+    api_obs = find_api_endpoints(target, registry)
+    observations.extend(api_obs)
+    api_count = sum(1 for o in api_obs if o.type == "API_ENDPOINT")
+    if api_count:
+        console.print(f"[yellow][?][/yellow] Found {api_count} accessible API endpoint(s)")
+    else:
+        console.print("[dim][~][/dim] No common API endpoints found")
+
     secret_obs = scan_js_for_secrets(js_obs)
     observations.extend(secret_obs)
     if secret_obs:
         console.print(f"[yellow][?][/yellow] {len(secret_obs)} possible secrets found (needs review)")
     else:
         console.print("[dim][~][/dim] No secret patterns matched")
+
+    dep_obs = find_exposed_manifests(target, registry)
+    observations.extend(dep_obs)
+    dep_count = sum(1 for o in dep_obs if o.type == "DEPENDENCY_MANIFEST_EXPOSED")
+    if dep_count:
+        console.print(f"[yellow][?][/yellow] Found {dep_count} exposed dependency manifest(s)")
+    else:
+        console.print("[dim][~][/dim] No exposed dependency manifests")
 
     # --- Findings Engine ---
     findings = analyze(observations)
@@ -105,6 +128,13 @@ def run(target: str) -> None:
     else:
         console.print("\n[dim]No findings.[/dim]")
 
+    # --- Correlation Engine ---
+    chains = correlate(findings)
+    if chains:
+        console.print(f"\n[bold magenta]Attack Chains:[/bold magenta] {len(chains)}")
+        for c in chains:
+            console.print(f"  [magenta][{c.severity.value}][/magenta] {c.title}")
+
     results_dir = Path("results")
     results_dir.mkdir(exist_ok=True)
 
@@ -116,11 +146,42 @@ def run(target: str) -> None:
     with findings_path.open("w", encoding="utf-8") as f:
         json.dump([fnd.to_dict() for fnd in findings], f, indent=2, ensure_ascii=False)
 
-    console.print(f"\nResults saved to:\n[bold]{obs_path}[/bold]\n[bold]{findings_path}[/bold]")
+    assets_path = results_dir / f"{target}_assets.json"
+    with assets_path.open("w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "assets": [a.to_dict() for a in registry.all_assets()],
+                "relationships": [r.to_dict() for r in registry.all_relationships()],
+            },
+            f,
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    report_path = results_dir / f"{target}_report.md"
+    generate_report(target, findings, report_path)
+
+    chains_path = results_dir / f"{target}_chains.json"
+    with chains_path.open("w", encoding="utf-8") as f:
+        json.dump([c.to_dict() for c in chains], f, indent=2, ensure_ascii=False)
+
+    console.print(
+        f"\nResults saved to:\n[bold]{obs_path}[/bold]\n"
+        f"[bold]{findings_path}[/bold]\n[bold]{assets_path}[/bold]\n[bold]{report_path}[/bold]"
+        f"[bold]{report_path}[/bold]\n[bold]{chains_path}[/bold]"
+    )
+
+
+def normalize_target(raw: str) -> str:
+    """Приводить ввід користувача до голого домену, без схеми і зайвих слешів."""
+    if "://" in raw:
+        raw = urlparse(raw).netloc
+    return raw.strip().rstrip("/")
 
 
 def main():
     if len(sys.argv) < 2:
         console.print("[red]Usage:[/red] python -m cyberrecon <target>")
         sys.exit(1)
-    run(sys.argv[1])
+    target = normalize_target(sys.argv[1])
+    run(target)

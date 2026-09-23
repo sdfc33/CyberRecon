@@ -1,12 +1,14 @@
 import subprocess
 from pathlib import Path
 from cyberrecon.observation import Observation
+from cyberrecon.asset import AssetRegistry, AssetType
 
 SUBFINDER_PATH = Path("tools") / "subfinder.exe"
 
 
-def find_subdomains(target: str, timeout: int = 60) -> list[Observation]:
+def find_subdomains(target: str, registry: AssetRegistry, timeout: int = 60) -> list[Observation]:
     observations: list[Observation] = []
+    domain_asset = registry.get_or_create(AssetType.DOMAIN, target)
 
     if not SUBFINDER_PATH.exists():
         observations.append(
@@ -53,6 +55,9 @@ def find_subdomains(target: str, timeout: int = 60) -> list[Observation]:
     subdomains = [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
     for sub in subdomains:
+        sub_asset = registry.get_or_create(AssetType.SUBDOMAIN, sub)
+        registry.link(domain_asset, sub_asset, "has_subdomain", source="subfinder")
+
         observations.append(
             Observation(
                 target=target,

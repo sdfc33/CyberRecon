@@ -18,10 +18,10 @@ class Confidence(str, Enum):
 
 
 class Status(str, Enum):
-    OBSERVED = "OBSERVED"       # автоматично зафіксовано, ще не проаналізовано людиною
-    HYPOTHESIS = "HYPOTHESIS"   # є підозра, потрібна перевірка (Етап 10)
-    VALIDATED = "VALIDATED"     # перевірено вручну, ознаки підтвердились
-    CONFIRMED = "CONFIRMED"     # доведено експлуатацією/чітким доказом
+    OBSERVED = "OBSERVED"
+    HYPOTHESIS = "HYPOTHESIS"
+    VALIDATED = "VALIDATED"
+    CONFIRMED = "CONFIRMED"
 
 
 @dataclass
@@ -43,3 +43,21 @@ class Finding:
         d["confidence"] = self.confidence.value
         d["status"] = self.status.value
         return d
+
+
+@dataclass
+class AttackChain:
+    title: str
+    target: str
+    findings: list[dict]
+    narrative: str
+    severity: Severity
+
+    def to_dict(self) -> dict:
+        return {
+            "title": self.title,
+            "target": self.target,
+            "findings": self.findings,
+            "narrative": self.narrative,
+            "severity": self.severity.value,
+        }

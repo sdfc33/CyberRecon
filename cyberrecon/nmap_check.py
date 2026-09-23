@@ -2,14 +2,16 @@ import subprocess
 import shutil
 import xml.etree.ElementTree as ET
 from cyberrecon.observation import Observation
+from cyberrecon.asset import AssetRegistry, AssetType
 
 
 def _find_nmap() -> str | None:
     return shutil.which("nmap")
 
 
-def scan_ports(target: str, timeout: int = 120) -> list[Observation]:
+def scan_ports(target: str, registry: AssetRegistry, timeout: int = 120) -> list[Observation]:
     observations: list[Observation] = []
+    domain_asset = registry.get_or_create(AssetType.DOMAIN, target)
 
     nmap_path = _find_nmap()
     if not nmap_path:
@@ -29,6 +31,8 @@ def scan_ports(target: str, timeout: int = 120) -> list[Observation]:
             [nmap_path, "-sV", "--top-ports", "100", "-oX", "-", target],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
@@ -84,11 +88,15 @@ def scan_ports(target: str, timeout: int = 120) -> list[Observation]:
             product = service_el.get("product") if service_el is not None else ""
             version = service_el.get("version") if service_el is not None else ""
 
+            port_value = f"{protocol}/{portid}"
+            port_asset = registry.get_or_create(AssetType.PORT, port_value)
+            registry.link(domain_asset, port_asset, "has_port", source="nmap")
+
             observations.append(
                 Observation(
                     target=target,
                     type="OPEN_PORT",
-                    value=f"{protocol}/{portid}",
+                    value=port_value,
                     source="nmap",
                     evidence={
                         "service": service_name,
