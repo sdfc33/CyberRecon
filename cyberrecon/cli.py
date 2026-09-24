@@ -19,6 +19,12 @@ from cyberrecon.api_check import find_api_endpoints
 from cyberrecon.dependencies_check import find_exposed_manifests
 from cyberrecon.report import generate_report
 from cyberrecon.correlation_engine import correlate
+from cyberrecon.hypothesis_engine import generate_hypotheses
+from cyberrecon.validation_engine import generate_validation_plans
+from cyberrecon.stratum_check import scan_mining_ports
+from cyberrecon.asic_panel_check import check_asic_panel
+from cyberrecon.miner_api_check import check_miner_api
+
 
 console = Console()
 
@@ -116,6 +122,34 @@ def run(target: str) -> None:
     else:
         console.print("[dim][~][/dim] No exposed dependency manifests")
 
+    console.print("[dim]Scanning mining-related ports...[/dim]")
+    mining_obs = scan_mining_ports(target, registry)
+    observations.extend(mining_obs)
+    stratum_count = sum(1 for o in mining_obs if o.type == "STRATUM_EXPOSED")
+    open_count = sum(1 for o in mining_obs if o.type == "MINING_PORT_OPEN")
+    if stratum_count:
+        console.print(f"[red][!][/red] Confirmed {stratum_count} exposed Stratum service(s)")
+    elif open_count:
+        console.print(f"[yellow][?][/yellow] {open_count} mining-port(s) open (unconfirmed protocol)")
+    else:
+        console.print("[dim][~][/dim] No mining ports found")
+
+    asic_obs = check_asic_panel(target, registry)
+    observations.extend(asic_obs)
+    if any(o.type == "ASIC_DEFAULT_CREDS" for o in asic_obs):
+        console.print("[red][!][/red] Default credentials work on ASIC panel!")
+    elif any(o.type == "ASIC_PANEL_FOUND" for o in asic_obs):
+        console.print("[yellow][?][/yellow] ASIC panel found")
+    else:
+        console.print("[dim][~][/dim] No ASIC panel found")
+
+    miner_api_obs = check_miner_api(target, registry)
+    observations.extend(miner_api_obs)
+    if miner_api_obs:
+        console.print("[yellow][?][/yellow] Miner API (cgminer/bmminer) exposed")
+    else:
+        console.print("[dim][~][/dim] No miner API found")
+
     # --- Findings Engine ---
     findings = analyze(observations)
     if findings:
@@ -134,6 +168,18 @@ def run(target: str) -> None:
         console.print(f"\n[bold magenta]Attack Chains:[/bold magenta] {len(chains)}")
         for c in chains:
             console.print(f"  [magenta][{c.severity.value}][/magenta] {c.title}")
+
+    # --- Hypothesis Engine ---
+    hypotheses = generate_hypotheses(findings)
+    if hypotheses:
+        console.print(f"\n[bold blue]Hypotheses:[/bold blue] {len(hypotheses)}")
+        for h in hypotheses:
+            console.print(f"  [blue][{h.vulnerability_type}][/blue] {h.title}")
+
+    # --- Validation Engine ---
+    validation_plans = generate_validation_plans(hypotheses)
+    if validation_plans:
+        console.print(f"\n[bold green]Validation Plans:[/bold green] {len(validation_plans)}")
 
     results_dir = Path("results")
     results_dir.mkdir(exist_ok=True)
@@ -165,10 +211,19 @@ def run(target: str) -> None:
     with chains_path.open("w", encoding="utf-8") as f:
         json.dump([c.to_dict() for c in chains], f, indent=2, ensure_ascii=False)
 
+    hypotheses_path = results_dir / f"{target}_hypotheses.json"
+    with hypotheses_path.open("w", encoding="utf-8") as f:
+        json.dump([h.to_dict() for h in hypotheses], f, indent=2, ensure_ascii=False)
+
+    validation_path = results_dir / f"{target}_validation_plans.json"
+    with validation_path.open("w", encoding="utf-8") as f:
+        json.dump([p.to_dict() for p in validation_plans], f, indent=2, ensure_ascii=False)
+
     console.print(
         f"\nResults saved to:\n[bold]{obs_path}[/bold]\n"
-        f"[bold]{findings_path}[/bold]\n[bold]{assets_path}[/bold]\n[bold]{report_path}[/bold]"
-        f"[bold]{report_path}[/bold]\n[bold]{chains_path}[/bold]"
+        f"[bold]{findings_path}[/bold]\n[bold]{assets_path}[/bold]\n"
+        f"[bold]{report_path}[/bold]\n[bold]{chains_path}[/bold]\n"
+        f"[bold]{hypotheses_path}[/bold]\n[bold]{validation_path}[/bold]"
     )
 
 

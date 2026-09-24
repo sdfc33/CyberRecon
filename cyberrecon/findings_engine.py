@@ -180,6 +180,102 @@ def analyze(observations: list[Observation]) -> list[Finding]:
                 )
             )
 
+        # Правило 9: підтверджений відкритий Stratum-сервіс
+        if obs.type == "STRATUM_EXPOSED":
+            findings.append(
+                Finding(
+                    title="Unauthenticated Stratum mining interface exposed",
+                    target=obs.target,
+                    severity=Severity.MEDIUM,
+                    confidence=Confidence.HIGH,
+                    status=Status.OBSERVED,
+                    source_observations=[obs.to_dict()],
+                    description=(
+                        f"Stratum-сервіс на {obs.target}:{obs.value} відповів на "
+                        f"mining.subscribe без будь-якої автентифікації на рівні "
+                        f"TCP-з'єднання. Варто перевірити, чи можна підключити "
+                        f"сторонній майнер до цього пулу без авторизації."
+                    ),
+                )
+            )
+
+        # Правило 10: відкритий mining-порт без підтвердженого протоколу
+        if obs.type == "MINING_PORT_OPEN":
+            findings.append(
+                Finding(
+                    title="Unidentified service on typical mining port",
+                    target=obs.target,
+                    severity=Severity.INFO,
+                    confidence=Confidence.LOW,
+                    status=Status.HYPOTHESIS,
+                    source_observations=[obs.to_dict()],
+                    description=(
+                        f"Порт {obs.value} на {obs.target} відкритий, але не "
+                        f"вдалось підтвердити stratum-протокол. Потребує ручної "
+                        f"перевірки — можливо, інший сервіс або нестандартна "
+                        f"реалізація stratum."
+                    ),
+                )
+            )
+
+                # Правило 11: знайдено ASIC-панель (з авторизацією чи без)
+        if obs.type == "ASIC_PANEL_FOUND":
+            auth_required = obs.evidence.get("auth_required", True)
+            findings.append(
+                Finding(
+                    title=(
+                        "ASIC management panel without authentication"
+                        if not auth_required
+                        else "ASIC management panel found"
+                    ),
+                    target=obs.target,
+                    severity=Severity.HIGH if not auth_required else Severity.LOW,
+                    confidence=Confidence.HIGH,
+                    status=Status.OBSERVED,
+                    source_observations=[obs.to_dict()],
+                    description=(
+                        f"Веб-панель керування ASIC знайдено на {obs.value}. "
+                        f"{'Доступ БЕЗ автентифікації взагалі.' if not auth_required else 'Вимагає автентифікацію.'}"
+                    ),
+                )
+            )
+
+        # Правило 12: дефолтні креденшели спрацювали
+        if obs.type == "ASIC_DEFAULT_CREDS":
+            findings.append(
+                Finding(
+                    title="Default credentials work on ASIC panel",
+                    target=obs.target,
+                    severity=Severity.CRITICAL,
+                    confidence=Confidence.HIGH,
+                    status=Status.CONFIRMED,
+                    source_observations=[obs.to_dict()],
+                    description=(
+                        f"Дефолтні креденшели ({obs.evidence.get('username')}/"
+                        f"{obs.evidence.get('password')}) успішно спрацювали на "
+                        f"{obs.value}. Повний доступ до керування пристроєм."
+                    ),
+                )
+            )
+
+        # Правило 13: відкритий miner API без авторизації
+        if obs.type == "MINER_API_EXPOSED":
+            findings.append(
+                Finding(
+                    title="Unauthenticated miner API exposed",
+                    target=obs.target,
+                    severity=Severity.HIGH,
+                    confidence=Confidence.HIGH,
+                    status=Status.OBSERVED,
+                    source_observations=[obs.to_dict()],
+                    description=(
+                        f"cgminer/bmminer API на {obs.target}:{obs.value} відповідає "
+                        f"без автентифікації. Залежно від прошивки, може дозволяти "
+                        f"команди керування (restart, config change), не лише перегляд стану."
+                    ),
+                )
+            )
+
     return _dedupe(findings)
 
 
