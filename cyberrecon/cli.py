@@ -24,7 +24,7 @@ from cyberrecon.validation_engine import generate_validation_plans
 from cyberrecon.stratum_check import scan_mining_ports
 from cyberrecon.asic_panel_check import check_asic_panel
 from cyberrecon.miner_api_check import check_miner_api
-
+from cyberrecon.ai_analyst import generate_ai_summary
 
 console = Console()
 
@@ -181,6 +181,16 @@ def run(target: str) -> None:
     if validation_plans:
         console.print(f"\n[bold green]Validation Plans:[/bold green] {len(validation_plans)}")
 
+        # --- AI Analyst ---
+    console.print("\n[dim]Requesting AI analysis...[/dim]")
+    ai_summary = generate_ai_summary(
+        target,
+        [f.to_dict() for f in findings],
+        [c.to_dict() for c in chains],
+        [h.to_dict() for h in hypotheses],
+    )
+    console.print(f"[bold cyan]AI Summary:[/bold cyan]\n{ai_summary}\n")
+
     results_dir = Path("results")
     results_dir.mkdir(exist_ok=True)
 
@@ -205,7 +215,7 @@ def run(target: str) -> None:
         )
 
     report_path = results_dir / f"{target}_report.md"
-    generate_report(target, findings, report_path)
+    generate_report(target, findings, report_path, ai_summary)
 
     chains_path = results_dir / f"{target}_chains.json"
     with chains_path.open("w", encoding="utf-8") as f:

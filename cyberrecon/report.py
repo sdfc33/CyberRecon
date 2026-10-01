@@ -5,7 +5,7 @@ from cyberrecon.finding import Finding, Severity
 _SEVERITY_ORDER = [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO]
 
 
-def generate_report(target: str, findings: list[Finding], output_path: Path) -> None:
+def generate_report(target: str, findings: list[Finding], output_path: Path, ai_summary: str = "") -> None:
     lines = [
         f"# CyberRecon Report: {target}",
         "",
@@ -13,6 +13,12 @@ def generate_report(target: str, findings: list[Finding], output_path: Path) -> 
         f"Total findings: {len(findings)}",
         "",
     ]
+
+    if ai_summary:
+        lines.append("## AI Analysis Summary")
+        lines.append("")
+        lines.append(ai_summary)
+        lines.append("")
 
     for severity in _SEVERITY_ORDER:
         group = [f for f in findings if f.severity == severity]
