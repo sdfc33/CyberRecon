@@ -6,6 +6,38 @@ def _findings_with(findings: list[Finding], keyword: str) -> list[Finding]:
     return [f for f in findings if keyword.lower() in f.title.lower()]
 
 
+def _dedupe(hypotheses: list[Hypothesis]) -> list[Hypothesis]:
+    grouped: dict[tuple[str, str, str], list[Hypothesis]] = {}
+    for h in hypotheses:
+        key = (h.title, h.target, h.vulnerability_type)
+        grouped.setdefault(key, []).append(h)
+
+    deduped: list[Hypothesis] = []
+    for (title, target, vuln_type), group in grouped.items():
+        if len(group) == 1:
+            deduped.append(group[0])
+            continue
+
+        all_supporting = []
+        for h in group:
+            all_supporting.extend(h.supporting_findings)
+
+        merged = Hypothesis(
+            title=title,
+            target=target,
+            vulnerability_type=vuln_type,
+            reasoning=(
+                f"{group[0].reasoning} "
+                f"(підтверджено {len(group)} окремими findings — деталі в supporting_findings)"
+            ),
+            supporting_findings=all_supporting,
+            confidence=group[0].confidence,
+        )
+        deduped.append(merged)
+
+    return deduped
+
+
 def generate_hypotheses(findings: list[Finding]) -> list[Hypothesis]:
     hypotheses: list[Hypothesis] = []
 
@@ -103,4 +135,4 @@ def generate_hypotheses(findings: list[Finding]) -> list[Hypothesis]:
             )
         )
 
-    return hypotheses
+    return _dedupe(hypotheses)

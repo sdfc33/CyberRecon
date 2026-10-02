@@ -1,6 +1,7 @@
 import httpx
 from cyberrecon.observation import Observation
 from cyberrecon.asset import AssetRegistry, AssetType
+from cyberrecon.url_utils import resolve_scheme
 
 COMMON_MANIFEST_PATHS = [
     "/package.json",
@@ -18,7 +19,8 @@ COMMON_MANIFEST_PATHS = [
 def find_exposed_manifests(target: str, registry: AssetRegistry, timeout: float = 5.0) -> list[Observation]:
     observations: list[Observation] = []
     domain_asset = registry.get_or_create(AssetType.DOMAIN, target)
-    base_url = f"https://{target}"
+    scheme = resolve_scheme(target)
+    base_url = f"{scheme}://{target}"
 
     for path in COMMON_MANIFEST_PATHS:
         url = f"{base_url}{path}"

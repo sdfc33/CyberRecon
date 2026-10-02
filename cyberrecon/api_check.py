@@ -1,8 +1,8 @@
 import httpx
 from cyberrecon.observation import Observation
 from cyberrecon.asset import AssetRegistry, AssetType
+from cyberrecon.url_utils import resolve_scheme
 
-# Типові шляхи, де публікується API-документація або сам API
 COMMON_API_PATHS = [
     "/swagger.json",
     "/swagger/v1/swagger.json",
@@ -17,15 +17,14 @@ COMMON_API_PATHS = [
     "/api/v2",
 ]
 
-# Ключові слова, які підтверджують, що це справді API-специфікація,
-# а не просто випадкова 200-сторінка (наприклад, кастомна 404)
 DOC_INDICATORS = ("swagger", "openapi", "\"paths\"", "graphql")
 
 
 def find_api_endpoints(target: str, registry: AssetRegistry, timeout: float = 5.0) -> list[Observation]:
     observations: list[Observation] = []
     domain_asset = registry.get_or_create(AssetType.DOMAIN, target)
-    base_url = f"https://{target}"
+    scheme = resolve_scheme(target)
+    base_url = f"{scheme}://{target}"
 
     for path in COMMON_API_PATHS:
         url = f"{base_url}{path}"

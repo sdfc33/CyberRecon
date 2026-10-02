@@ -1,12 +1,14 @@
 import httpx
 from cyberrecon.observation import Observation
 from cyberrecon.asset import AssetRegistry, AssetType
+from cyberrecon.url_utils import resolve_scheme
 
 
 def check_git_exposure(target: str, registry: AssetRegistry) -> list[Observation]:
     observations: list[Observation] = []
     domain_asset = registry.get_or_create(AssetType.DOMAIN, target)
-    url = f"https://{target}/.git/HEAD"
+    scheme = resolve_scheme(target)
+    url = f"{scheme}://{target}/.git/HEAD"
 
     try:
         resp = httpx.get(url, timeout=5.0, follow_redirects=False)

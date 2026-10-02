@@ -3,6 +3,7 @@ import httpx
 from urllib.parse import urljoin
 from cyberrecon.observation import Observation
 from cyberrecon.asset import AssetRegistry, AssetType
+from cyberrecon.url_utils import resolve_scheme
 
 SCRIPT_SRC_RE = re.compile(r'<script[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
 
@@ -10,7 +11,8 @@ SCRIPT_SRC_RE = re.compile(r'<script[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE
 def find_js_files(target: str, registry: AssetRegistry) -> list[Observation]:
     observations: list[Observation] = []
     domain_asset = registry.get_or_create(AssetType.DOMAIN, target)
-    base_url = f"https://{target}/"
+    scheme = resolve_scheme(target)
+    base_url = f"{scheme}://{target}/"
 
     try:
         resp = httpx.get(base_url, timeout=5.0, follow_redirects=True)

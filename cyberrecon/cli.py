@@ -193,16 +193,17 @@ def run(target: str) -> None:
 
     results_dir = Path("results")
     results_dir.mkdir(exist_ok=True)
+    safe_target = target.replace(":", "_").replace("/", "_")
 
-    obs_path = results_dir / f"{target}.json"
+    obs_path = results_dir / f"{safe_target}.json"
     with obs_path.open("w", encoding="utf-8") as f:
         json.dump([o.to_dict() for o in observations], f, indent=2, ensure_ascii=False)
 
-    findings_path = results_dir / f"{target}_findings.json"
+    findings_path = results_dir / f"{safe_target}_findings.json"
     with findings_path.open("w", encoding="utf-8") as f:
         json.dump([fnd.to_dict() for fnd in findings], f, indent=2, ensure_ascii=False)
 
-    assets_path = results_dir / f"{target}_assets.json"
+    assets_path = results_dir / f"{safe_target}_assets.json"
     with assets_path.open("w", encoding="utf-8") as f:
         json.dump(
             {
@@ -214,18 +215,18 @@ def run(target: str) -> None:
             ensure_ascii=False,
         )
 
-    report_path = results_dir / f"{target}_report.md"
+    report_path = results_dir / f"{safe_target}_report.md"
     generate_report(target, findings, report_path, ai_summary)
 
-    chains_path = results_dir / f"{target}_chains.json"
+    chains_path = results_dir / f"{safe_target}_chains.json"
     with chains_path.open("w", encoding="utf-8") as f:
         json.dump([c.to_dict() for c in chains], f, indent=2, ensure_ascii=False)
 
-    hypotheses_path = results_dir / f"{target}_hypotheses.json"
+    hypotheses_path = results_dir / f"{safe_target}_hypotheses.json"
     with hypotheses_path.open("w", encoding="utf-8") as f:
         json.dump([h.to_dict() for h in hypotheses], f, indent=2, ensure_ascii=False)
 
-    validation_path = results_dir / f"{target}_validation_plans.json"
+    validation_path = results_dir / f"{safe_target}_validation_plans.json"
     with validation_path.open("w", encoding="utf-8") as f:
         json.dump([p.to_dict() for p in validation_plans], f, indent=2, ensure_ascii=False)
 
