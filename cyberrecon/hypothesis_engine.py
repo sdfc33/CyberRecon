@@ -84,4 +84,23 @@ def generate_hypotheses(findings: list[Finding]) -> list[Hypothesis]:
             )
         )
 
+    # Правило 5: публічно доступний маніфест залежностей
+    for f in _findings_with(findings, "manifest"):
+        hypotheses.append(
+            Hypothesis(
+                title=f"Dependency/supply chain risk on {f.target}",
+                target=f.target,
+                vulnerability_type="Dependency/Supply Chain Risk",
+                reasoning=(
+                    f"Публічно доступний файл-маніфест залежностей ({f.title}) розкриває "
+                    f"точні версії бібліотек і, можливо, назви внутрішніх/приватних пакетів. "
+                    f"Варто перевірити версії на відомі CVE (osv.dev/NVD) та перевірити, "
+                    f"чи немає серед залежностей приватних імен пакетів, вразливих до "
+                    f"dependency confusion (чи існує публічний пакет з такою ж назвою)."
+                ),
+                supporting_findings=[f.to_dict()],
+                confidence=Confidence.LOW,
+            )
+        )
+
     return hypotheses

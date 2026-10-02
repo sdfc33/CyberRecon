@@ -5,6 +5,7 @@ SKILLS_DIR = Path(__file__).parent / "skills"
 SKILL_MAP = {
     "BOLA/IDOR": ["idor.md", "api_security.md"],
     "Broken Access Control / BOLA / IDOR": ["idor.md", "api_security.md"],
+    "Dependency/Supply Chain Risk": ["supply_chain.md", "dependency_confusion.md"],
 }
 
 

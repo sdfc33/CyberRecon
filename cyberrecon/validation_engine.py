@@ -102,12 +102,42 @@ def _plan_for_mining_unauthorized_access(hyp: Hypothesis) -> ValidationPlan:
     )
 
 
+def _plan_for_supply_chain(hyp: Hypothesis) -> ValidationPlan:
+    return ValidationPlan(
+        hypothesis_title=hyp.title,
+        target=hyp.target,
+        steps=[
+            "Відкрий знайдений маніфест (package.json/composer.lock тощо) і випиши "
+            "всі залежності з точними версіями.",
+            "Перевір кожну версію на osv.dev або через 'pip-audit'/'npm audit "
+            "--package-lock-only' (локально, на завантаженому маніфесті).",
+            "Зверни увагу на назви пакетів без публічного org-префіксу "
+            "(наприклад '@internal/utils' замість '@company/utils') — "
+            "потенційна ознака внутрішнього пакета.",
+            "Перевір на npmjs.com/pypi.org, чи існує публічний пакет з такою ж "
+            "назвою — якщо так, і версія в приватному манifecте вища за публічну, "
+            "це сигнал ризику dependency confusion.",
+            "НЕ публікуй власний пакет з такою назвою навіть для демонстрації — "
+            "це вже активна атака, не recon.",
+            "Задокументуй конкретні вразливі версії/CVE та потенційно підозрілі "
+            "назви пакетів як доказ.",
+        ],
+        tools_needed=["pip-audit / npm audit", "доступ до npmjs.com або pypi.org"],
+        caution=(
+            "НЕ публікуй підставний пакет під знайденою внутрішньою назвою — "
+            "навіть порожній 'proof of concept' пакет є формою атаки на реальну "
+            "інфраструктуру компанії, а не пасивною демонстрацією."
+        ),
+    )
+
+
 _PLAN_DISPATCH = {
     "BOLA": _plan_for_bola,
     "IDOR": _plan_for_bola,
     "Credential Exposure": _plan_for_credential_exposure,
     "Source Code Exposure": _plan_for_source_exposure,
     "Mining Infrastructure Unauthorized Access": _plan_for_mining_unauthorized_access,
+    "Dependency/Supply Chain Risk": _plan_for_supply_chain,
 }
 
 
